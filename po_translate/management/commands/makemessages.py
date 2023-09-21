@@ -1,12 +1,11 @@
 import os
 import re
 
-import pkg_resources
 import polib
 from django.conf import settings
 from django.core.management.commands import makemessages
 
-# from googletrans import Translator
+from googletrans import Translator
 
 
 class Command(makemessages.Command):
@@ -15,6 +14,33 @@ class Command(makemessages.Command):
     """
 
     msgmerge_options = ["-q", "--backup=none", "--previous", "--update", "--no-fuzzy-matching", "--no-location"]
+    translator = Translator()
+
+    @staticmethod
+    def get_path_map(selected_locale, domain) -> dict:
+        path_map = {}
+        for locale in selected_locale:
+            for path in settings.LOCALE_PATHS:
+                path_map.update({os.path.join(path, f'{locale}/LC_MESSAGES/{domain}.po'): locale})
+        return path_map
+
+    def po_translate(self, po_file, locale):
+        untranslated_list = [entry.msgid for entry in po_file.untranslated_entries()]
+        translated_list = self.translator.translate(untranslated_list, dest=locale)
+
+        for entry, translated in zip(po_file.untranslated_entries(), translated_list):
+            variables_msgid = re.findall(r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?', entry.msgid)
+
+            if not variables_msgid:
+                entry.msgstr = translated.text
+            else:
+                variables_msgstr = re.findall(r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?', translated.text)
+
+                for var_msgstr, var_msgid in zip(variables_msgstr, variables_msgid):
+                    translated.text = translated.text.replace(var_msgstr, var_msgid)
+                    entry.msgstr = translated.text
+
+            po_file.save()
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
@@ -32,60 +58,25 @@ class Command(makemessages.Command):
             action="store_true"
         )
 
-    def valid_translator_version(self):
-        error_message = 'Need googletrans 3.1.0a0 version.' \
-                        ' Please, install googletrans command "pip install googletrans==3.1.0a0"'
-        valid_versions = ['3.1.0a0', '4.0.0rc1']
-        try:
-            package = pkg_resources.get_distribution("googletrans")
-        except pkg_resources.DistributionNotFound:
-            raise ValueError(error_message)
-
-        if package and package.version not in valid_versions:
-            raise ValueError(error_message)
-        return True
-
     def handle(self, *args, **options):
+        res = super().handle(*args, **options)
         no_clear_fuzzy = options.pop('no_clear_fuzzy')
         no_translate = options.pop('no_translate')
         selected_locale = options.get('locale')
-        res = super().handle(*args, **options)
+        domain = options.get('domain')
+        path_map = self.get_path_map(selected_locale, domain)
 
-        for locale in selected_locale:
-            paths = []
-            for path in settings.LOCALE_PATHS:
-                paths.append(os.path.join(path, f'{locale}/LC_MESSAGES/django.po'))
-
-        for path in paths:
-            po = polib.pofile(path)
+        for path, locale in path_map.items():
+            po_file = polib.pofile(path)
 
             # убираем fuzzy
             if not no_clear_fuzzy:
-                for entry in po.fuzzy_entries():
+                for entry in po_file.fuzzy_entries():
                     entry.flags.remove('fuzzy')
-                po.save()
+                po_file.save()
 
             # добавляем перевод
             if not no_translate:
-                if self.valid_translator_version():
-                    from googletrans import Translator
-
-                translator = Translator()
-                untranslated_list = [entry.msgid for entry in po.untranslated_entries()]
-                translated_list = translator.translate(untranslated_list, dest=locale)
-
-                for entry, translated in zip(po.untranslated_entries(), translated_list):
-                    variables_msgid = re.findall(r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?', entry.msgid)
-
-                    if not variables_msgid:
-                        entry.msgstr = translated.text
-                    else:
-                        variables_msgstr = re.findall(r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?', translated.text)
-
-                        for var_msgstr, var_msgid in zip(variables_msgstr, variables_msgid):
-                            translated.text = translated.text.replace(var_msgstr, var_msgid)
-                            entry.msgstr = translated.text
-
-                po.save()
+                self.po_translate(po_file, locale)
 
         return res
