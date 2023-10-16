@@ -15,6 +15,7 @@ class Command(makemessages.Command):
 
     msgmerge_options = ["-q", "--backup=none", "--previous", "--update", "--no-fuzzy-matching", "--no-location"]
     translator = Translator()
+    RE_PATTERN = r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?'
 
     @staticmethod
     def get_path_map(selected_locale, domain) -> dict:
@@ -29,18 +30,22 @@ class Command(makemessages.Command):
         translated_list = self.translator.translate(untranslated_list, dest=locale)
 
         for entry, translated in zip(po_file.untranslated_entries(), translated_list):
-            variables_msgid = re.findall(r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?', entry.msgid)
+            variables_msgid = re.findall(self.RE_PATTERN, entry.msgid)
+            is_msgid_starts_with_newline = entry.msgid.startswith("\n")
 
             if not variables_msgid:
                 entry.msgstr = translated.text
+                if is_msgid_starts_with_newline:
+                    entry.msgstr = "\n" + translated.text
             else:
-                variables_msgstr = re.findall(r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?', translated.text)
+                variables_msgstr = re.findall(self.RE_PATTERN, translated.text)
 
                 for var_msgstr, var_msgid in zip(variables_msgstr, variables_msgid):
                     translated.text = translated.text.replace(var_msgstr, var_msgid)
                     entry.msgstr = translated.text
-
-            po_file.save()
+                    if is_msgid_starts_with_newline:
+                        entry.msgstr = "\n" + translated.text
+        po_file.save()
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
