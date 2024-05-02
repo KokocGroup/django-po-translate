@@ -32,19 +32,22 @@ class Command(makemessages.Command):
         for entry, translated in zip(po_file.untranslated_entries(), translated_list):
             variables_msgid = re.findall(self.RE_PATTERN, entry.msgid)
             is_msgid_starts_with_newline = entry.msgid.startswith("\n")
+            is_msgid_end_with_newline = entry.msgid.endswith("\n")
 
             if not variables_msgid:
                 entry.msgstr = translated.text
-                if is_msgid_starts_with_newline:
-                    entry.msgstr = "\n" + translated.text
             else:
                 variables_msgstr = re.findall(self.RE_PATTERN, translated.text)
 
                 for var_msgstr, var_msgid in zip(variables_msgstr, variables_msgid):
                     translated.text = translated.text.replace(var_msgstr, var_msgid)
                     entry.msgstr = translated.text
-                    if is_msgid_starts_with_newline:
-                        entry.msgstr = "\n" + translated.text
+
+            if is_msgid_starts_with_newline:
+                entry.msgstr = "\n" + entry.msgstr
+            if is_msgid_end_with_newline:
+                entry.msgstr = entry.msgstr + "\n"
+
         po_file.save()
 
     def add_arguments(self, parser):
