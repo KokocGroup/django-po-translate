@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.management.commands import makemessages
 
 from googletrans import Translator
-from asgiref.sync import sync_to_async
+from asgiref.sync import async_to_sync
 
 
 class Command(makemessages.Command):
@@ -33,7 +33,7 @@ class Command(makemessages.Command):
 
     def po_translate(self, po_file, locale):
         untranslated_list = [entry.msgid for entry in po_file.untranslated_entries()]
-        translated_list = sync_to_async(self.translate_list)(untranslated_list)
+        translated_list = async_to_sync(self.translate_list)(untranslated_list)
 
         for entry, translated in zip(po_file.untranslated_entries(), translated_list):
             variables_msgid = re.findall(self.RE_PATTERN, entry.msgid)
