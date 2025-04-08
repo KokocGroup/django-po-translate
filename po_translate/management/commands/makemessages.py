@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.management.commands import makemessages
 
 from googletrans import Translator
+from asgiref.sync import sync_to_async
 
 
 class Command(makemessages.Command):
@@ -17,6 +18,11 @@ class Command(makemessages.Command):
     translator = Translator()
     RE_PATTERN = r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?'
 
+    async def translate_list(self, untranslated_list):
+        async with Translator() as translator:
+            translations = translator.translate(untranslated_list)
+            return translations
+
     @staticmethod
     def get_path_map(selected_locale, domain) -> dict:
         path_map = {}
@@ -27,7 +33,7 @@ class Command(makemessages.Command):
 
     def po_translate(self, po_file, locale):
         untranslated_list = [entry.msgid for entry in po_file.untranslated_entries()]
-        translated_list = self.translator.translate(untranslated_list, dest=locale)
+        translated_list = sync_to_async(self.translate_list)(untranslated_list)
 
         for entry, translated in zip(po_file.untranslated_entries(), translated_list):
             variables_msgid = re.findall(self.RE_PATTERN, entry.msgid)
