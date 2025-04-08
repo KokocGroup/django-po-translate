@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.management.commands import makemessages
 
 from googletrans import Translator
-from asgiref.sync import async_to_sync
+import asyncio
 
 
 class Command(makemessages.Command):
@@ -15,12 +15,12 @@ class Command(makemessages.Command):
     """
 
     msgmerge_options = ["-q", "--backup=none", "--previous", "--update", "--no-fuzzy-matching", "--no-location"]
-    translator = Translator()
+    # translator = Translator()
     RE_PATTERN = r'\{\{?[%\s\S]*?\}\}?|\%\([^\)]*\)[ds]?'
 
-    async def translate_list(self, untranslated_list):
+    async def translate_list(self, untranslated_list, dest):
         async with Translator() as translator:
-            translations = translator.translate(untranslated_list)
+            translations = await translator.translate(untranslated_list, dest=dest)
             return translations
 
     @staticmethod
@@ -33,7 +33,7 @@ class Command(makemessages.Command):
 
     def po_translate(self, po_file, locale):
         untranslated_list = [entry.msgid for entry in po_file.untranslated_entries()]
-        translated_list = async_to_sync(self.translate_list)(untranslated_list)
+        translated_list = asyncio.run(self.translate_list(untranslated_list, locale))
 
         for entry, translated in zip(po_file.untranslated_entries(), translated_list):
             variables_msgid = re.findall(self.RE_PATTERN, entry.msgid)
